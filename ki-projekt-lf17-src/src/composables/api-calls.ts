@@ -1,4 +1,4 @@
-export function postPromt(prompt) {
+export function postPromt(prompt: string) {
   return fetch("/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
