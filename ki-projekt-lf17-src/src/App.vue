@@ -1,18 +1,106 @@
+<script setup lang="ts">
+import { nextTick, ref } from 'vue'
+
+interface Message {
+  role: 'user' | 'assistant'
+  content: string
+  diagramUrl?: string
+  diagramError?: boolean
+}
+
+const LLAMA_API = 'http://localhost:8080/v1/chat/completions'
+
+const messages = ref<Message[]>([])
+const prompt = ref('')
+const loading = ref(false)
+const error = ref('')
+const chatContainer = ref<HTMLElement | null>(null)
+
+async function scrollToBottom(): Promise<void> {
+  await nextTick()
+  chatContainer.value?.scrollTo({
+    top: chatContainer.value.scrollHeight,
+    behavior: 'smooth',
+  })
+}
+
+async function sendMessage(): Promise<void> {
+  const text = prompt.value.trim()
+  if (!text || loading.value) return
+
+  error.value = ''
+  loading.value = true
+  prompt.value = ''
+
+  const userMessage: Message = { role: 'user', content: text }
+  messages.value.push(userMessage)
+  await scrollToBottom()
+
+  try {
+    const response = await fetch(LLAMA_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: messages.value.map(({ role, content }) => ({
+          role,
+          content,
+        })),
+        temperature: 0.7,
+        max_tokens: 1024,
+        stream: false,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Serverfehler ${response.status}: ${await response.text()}`)
+    }
+
+    const data = await response.json()
+    const content = data.choices?.[0]?.message?.content
+
+    if (typeof content !== 'string') {
+      throw new Error('Die Serverantwort enthält keinen Antworttext.')
+    }
+
+    messages.value.push({
+      role: 'assistant',
+      content,
+      diagramUrl: plantUmlUrl(content),
+    })
+
+    await scrollToBottom()
+  } catch (cause) {
+    messages.value.pop()
+    prompt.value = text
+    error.value = cause instanceof Error ? cause.message : 'Unbekannter Fehler'
+  } finally {
+    loading.value = false
+  }
+}
+
+function newChat(): void {
+  if (loading.value) return
+  messages.value = []
+  prompt.value = ''
+  error.value = ''
+}
+</script>
+
 <template>
   <div class="app">
     <aside class="sidebar">
-      <div class="brand">Llama-Verdichter</div>
-      <button class="new-chat" :disabled="loading" @click="newChat">+ Neues Diagramm</button>
-      <p class="sidebar-note">Created with Love by IGD23</p>
+      <div class="brand">Llama—Verdichter</div>
+      <button class="new-chat" :disabled="loading" @click="newChat">+ Neuer Chat</button>
+      <p class="sidebar-note">Created with ❤️ by IGD23</p>
     </aside>
 
     <main class="main">
-      <header class="header">Mein KI-Chat</header>
+      <header class="header">Neues Diagramm</header>
 
       <section ref="chatContainer" class="conversation">
         <div v-if="messages.length === 0" class="welcome">
-          <h1>Wobei kann ich dir helfen?</h1>
-          <p>Lass uns ein Diagramm erstellen !</p>
+          <h1>Lass uns ein Diagramm erstellen !</h1>
+          <p></p>
         </div>
 
         <div v-else class="messages">
@@ -43,7 +131,7 @@
             </div>
           </article>
 
-          <div v-if="loading" class="thinking">Llama antwortet …</div>
+          <div v-if="loading" class="thinking">KI antwortet …</div>
         </div>
       </section>
 
